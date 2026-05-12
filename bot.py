@@ -2,9 +2,8 @@ import discord
 from discord.ext import commands
 from discord.ui import View
 import json
-from datetime import datetime
-import random
 import os
+from datetime import datetime
 
 # =========================
 # 📦 JSON DB
@@ -15,19 +14,23 @@ DB_FILE = "data.json"
 def load_data():
     if not os.path.exists(DB_FILE):
         return {"hands": []}
-    with open(DB_FILE, "r", encoding="utf-8") as f:
-        return json.load(f)
+
+    try:
+        with open(DB_FILE, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except json.JSONDecodeError:
+        return {"hands": []}
 
 def save_data(data):
     with open(DB_FILE, "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, indent=2)
 
 # =========================
-# ⚙️ Bot
+# 🤖 Bot
 # =========================
 
 intents = discord.Intents.default()
-intents.message_content = True  # ⚠️ 一定要開（不然收不到圖片）
+intents.message_content = True  # ⚠️ 必開
 bot = commands.Bot(command_prefix="!", intents=intents)
 
 # =========================
@@ -35,6 +38,18 @@ bot = commands.Bot(command_prefix="!", intents=intents)
 # =========================
 
 pending_target = {}
+
+# =========================
+# 📌 主選單
+# =========================
+
+class MainView(View):
+    def __init__(self):
+        super().__init__(timeout=180)
+
+    @discord.ui.button(label="📸 手照系統", style=discord.ButtonStyle.primary)
+    async def hand(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.send_message("📸 手照系統", view=HandView(), ephemeral=True)
 
 # =========================
 # 📸 手照系統 UI
@@ -47,7 +62,7 @@ class HandView(View):
     @discord.ui.button(label="📸 開始傳手照", style=discord.ButtonStyle.green)
     async def start(self, interaction: discord.Interaction, button: discord.ui.Button):
         await interaction.response.send_message(
-            "👉 請先設定對象：\n`!sethand @對象`\n然後直接傳圖片",
+            "👉 請先設定對象：`!sethand @對象`\n然後直接傳圖片",
             ephemeral=True
         )
 
@@ -70,34 +85,7 @@ class HandView(View):
 
     @discord.ui.button(label="🔙 返回", style=discord.ButtonStyle.gray)
     async def back(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await interaction.response.edit_message(
-            content="📌 主選單",
-            view=MainView()
-        )
-
-# =========================
-# 📌 主選單
-# =========================
-
-class MainView(View):
-
-    def __init__(self):
-        super().__init__(timeout=180)
-
-    @discord.ui.button(label="💞 情侶系統", style=discord.ButtonStyle.primary)
-    async def couple(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await interaction.response.send_message("💞 情侶系統（略）", ephemeral=True)
-
-    @discord.ui.button(label="🎁 驚喜系統", style=discord.ButtonStyle.success)
-    async def gift(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await interaction.response.send_message("🎁 驚喜（略）", ephemeral=True)
-
-    @discord.ui.button(label="📸 手照系統", style=discord.ButtonStyle.secondary)
-    async def hand(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await interaction.response.edit_message(
-            content="📸 手照系統",
-            view=HandView()
-        )
+        await interaction.response.send_message("📌 主選單", view=MainView(), ephemeral=True)
 
 # =========================
 # 🚀 /start
@@ -118,10 +106,10 @@ async def start(interaction: discord.Interaction):
 @bot.command()
 async def sethand(ctx, target: str):
     pending_target[ctx.author.id] = target
-    await ctx.send("📸 已設定對象，現在請直接傳圖片")
+    await ctx.send("📸 已設定對象，請直接傳圖片")
 
 # =========================
-# 📸 自動接收圖片（核心）
+# 📸 自動收圖核心
 # =========================
 
 @bot.event
@@ -130,7 +118,6 @@ async def on_message(message):
     if message.author.bot:
         return
 
-    # 有設定對象 + 有圖片
     if message.author.id in pending_target:
 
         if message.attachments:
