@@ -3,19 +3,20 @@ from discord.ext import commands
 import yt_dlp
 import asyncio
 import os
-from collections import defaultdict
+import random
+from datetime import datetime
+from collections import deque
 
 # ======================
-# ENV CHECK
+# ENV
 # ======================
 TOKEN = os.getenv("DISCORD_TOKEN")
 
 if not TOKEN:
-    raise RuntimeError("DISCORD_TOKEN not set in Railway Variables")
+    raise RuntimeError("DISCORD_TOKEN not set")
 
 print("BOT STARTING...")
 print("TOKEN OK:", bool(TOKEN))
-print("TEST:", os.getenv("TEST123"))
 
 # ======================
 # INTENTS
@@ -27,159 +28,238 @@ intents.voice_states = True
 bot = commands.Bot(command_prefix="!", intents=intents)
 
 # ======================
-# QUEUE
+# 💞 情侶天數
 # ======================
-queues = defaultdict(list)
+start_date = datetime(2025, 2, 24)
+
+def get_days():
+    return (datetime.now() - start_date).days
 
 # ======================
-# YT-DLP SETTINGS
+# 🎵 QUEUE
 # ======================
-ydl_opts = {
+queues = {}
+
+def get_queue(guild_id):
+    if guild_id not in queues:
+        queues[guild_id] = deque()
+    return queues[guild_id]
+
+# ======================
+# YT-DLP
+# ======================
+YDL_OPTIONS = {
     "format": "bestaudio/best",
     "quiet": True,
     "noplaylist": True,
 }
 
-ffmpeg_opts = {
+FFMPEG_OPTIONS = {
+    "before_options": "-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5",
     "options": "-vn"
 }
 
 # ======================
-# PLAY NEXT
+# MUSIC ENGINE
 # ======================
-async def play_next(ctx):
-    if not ctx.voice_client:
-        return
-
-    queue = queues[ctx.guild.id]
+async def play_next(guild_id, vc):
+    queue = get_queue(guild_id)
 
     if not queue:
         return
 
-    url = queue.pop(0)
+    song = queue.popleft()
 
-    try:
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            info = ydl.extract_info(url, download=False)
-            audio_url = info["url"]
+    source = discord.FFmpegPCMAudio(song["url"], **FFMPEG_OPTIONS)
 
-        source = await discord.FFmpegOpusAudio.from_probe(audio_url, **ffmpeg_opts)
-
-    except Exception as e:
-        print("ERROR extracting audio:", e)
-        return await play_next(ctx)
-
-    def after_play(err):
-        fut = asyncio.run_coroutine_threadsafe(play_next(ctx), bot.loop)
+    def after(err):
+        fut = asyncio.run_coroutine_threadsafe(
+            play_next(guild_id, vc),
+            bot.loop
+        )
         try:
             fut.result()
         except:
             pass
 
-    ctx.voice_client.play(source, after=after_play)
+    vc.play(source, after=after)
 
 # ======================
-# JOIN VC
+# CONNECT VC
 # ======================
-async def join_vc(ctx):
+async def safe_connect(channel):
+    vc = channel.guild.voice_client
+
+    if vc and vc.is_connected():
+        return vc
+
+    return await channel.connect()
+
+# ======================
+# MUSIC FUNCTION
+# ======================
+async def play_song(interaction, query):
+    if not interaction.user.voice:
+        return await interaction.response.send_message("❌ 先進語音", ephemeral=True)
+
+    vc = await safe_connect(interaction.user.voice.channel)
+
+    await interaction.response.send_message("🔍 搜尋中...")
+
+    with yt_dlp.YoutubeDL(YDL_OPTIONS) as ydl:
+        info = ydl.extract_info(f"ytsearch:{query}", download=False)
+        data = info["entries"][0]
+
+    song = {
+        "title": data["title"],
+        "url": data["url"]
+    }
+
+    get_queue(interaction.guild.id).append(song)
+
+    await interaction.followup.send(f"🎵 已加入：{song['title']}")
+
+    if not vc.is_playing():
+        await play_next(interaction.guild.id, vc)
+
+# ======================
+# 🎵 MUSIC UI
+# ======================
+class MusicView(discord.ui.View):
+
+    @discord.ui.button(label="🔍 搜尋", style=discord.ButtonStyle.primary)
+    async def search(self, interaction, button):
+        await interaction.response.send_modal(MusicModal())
+
+    @discord.ui.button(label="⏸ 暫停", style=discord.ButtonStyle.secondary)
+    async def pause(self, interaction, button):
+        vc = interaction.guild.voice_client
+        if vc:
+            vc.pause()
+        await interaction.response.send_message("⏸ 暫停", ephemeral=True)
+
+    @discord.ui.button(label="▶ 繼續", style=discord.ButtonStyle.success)
+    async def resume(self, interaction, button):
+        vc = interaction.guild.voice_client
+        if vc:
+            vc.resume()
+        await interaction.response.send_message("▶ 繼續", ephemeral=True)
+
+    @discord.ui.button(label="⏭ 跳過", style=discord.ButtonStyle.primary)
+    async def skip(self, interaction, button):
+        vc = interaction.guild.voice_client
+        if vc:
+            vc.stop()
+        await interaction.response.send_message("⏭ 跳過", ephemeral=True)
+
+    @discord.ui.button(label="👋 離開", style=discord.ButtonStyle.danger)
+    async def leave(self, interaction, button):
+        vc = interaction.guild.voice_client
+        if vc:
+            await vc.disconnect()
+        await interaction.response.send_message("👋 離開")
+
+class MusicModal(discord.ui.Modal, title="搜尋音樂"):
+    song = discord.ui.TextInput(label="歌曲")
+
+    async def on_submit(self, interaction):
+        await play_song(interaction, self.song.value)
+
+# ======================
+# 💞 情侶 UI（修正版）
+# ======================
+class CoupleView(discord.ui.View):
+
+    @discord.ui.button(label="💞 天數", style=discord.ButtonStyle.primary)
+    async def days(self, interaction, button):
+        await interaction.response.send_message(f"💞 在一起 {get_days()} 天")
+
+    @discord.ui.button(label="💗 love", style=discord.ButtonStyle.primary)
+    async def love(self, interaction, button):
+        await interaction.response.send_message("💗 想你")
+
+    @discord.ui.button(label="🤗 hug", style=discord.ButtonStyle.primary)
+    async def hug(self, interaction, button):
+        await interaction.response.send_message("🤗 抱抱")
+
+    @discord.ui.button(label="🎵 音樂", style=discord.ButtonStyle.success)
+    async def music(self, interaction, button):
+        await interaction.response.send_message("🎵 音樂面板", view=MusicView(), ephemeral=True)
+
+# ======================
+# 🎁 驚喜
+# ======================
+class GiftView(discord.ui.View):
+
+    @discord.ui.button(label="🎁 開啟", style=discord.ButtonStyle.success)
+    async def gift(self, interaction, button):
+        gifts = ["🧋 奶茶", "💖 抱抱", "🍫 巧克力", "✨ 幸運+100%"]
+        await interaction.response.send_message(random.choice(gifts))
+
+# ======================
+# 💬 日常
+# ======================
+class ChatView(discord.ui.View):
+
+    @discord.ui.button(label="☀️ 早安", style=discord.ButtonStyle.secondary)
+    async def morning(self, interaction, button):
+        await interaction.response.send_message("☀️ 早安")
+
+    @discord.ui.button(label="🌙 晚安", style=discord.ButtonStyle.secondary)
+    async def night(self, interaction, button):
+        await interaction.response.send_message("🌙 晚安")
+
+# ======================
+# 📌 主選單
+# ======================
+class MainView(discord.ui.View):
+
+    @discord.ui.button(label="💞 情侶", style=discord.ButtonStyle.primary)
+    async def couple(self, interaction, button):
+        await interaction.response.edit_message(content="💞 情侶系統", view=CoupleView())
+
+    @discord.ui.button(label="🎁 驚喜", style=discord.ButtonStyle.success)
+    async def gift(self, interaction, button):
+        await interaction.response.edit_message(content="🎁 驚喜", view=GiftView())
+
+    @discord.ui.button(label="💬 日常", style=discord.ButtonStyle.secondary)
+    async def chat(self, interaction, button):
+        await interaction.response.edit_message(content="💬 日常", view=ChatView())
+
+# ======================
+# /start
+# ======================
+@bot.tree.command(name="start", description="主選單")
+async def start(interaction: discord.Interaction):
+    await interaction.response.send_message(
+        "📌 主選單",
+        view=MainView(),
+        ephemeral=True
+    )
+
+# ======================
+# PREFIX PLAY
+# ======================
+@bot.command()
+async def play(ctx, query: str):
     if not ctx.author.voice:
-        await ctx.send("❌ 你沒有在語音頻道")
-        return False
+        return await ctx.send("❌ 先進語音")
 
-    channel = ctx.author.voice.channel
+    vc = await safe_connect(ctx.author.voice.channel)
 
-    if ctx.voice_client is None:
-        await channel.connect()
-    else:
-        await ctx.voice_client.move_to(channel)
+    with yt_dlp.YoutubeDL(YDL_OPTIONS) as ydl:
+        info = ydl.extract_info(f"ytsearch:{query}", download=False)
+        data = info["entries"][0]
 
-    return True
+    song = {"title": data["title"], "url": data["url"]}
+    get_queue(ctx.guild.id).append(song)
 
-# ======================
-# PLAY
-# ======================
-@bot.command()
-async def play(ctx, url: str):
-    ok = await join_vc(ctx)
-    if not ok:
-        return
+    await ctx.send(f"🎵 加入：{song['title']}")
 
-    queues[ctx.guild.id].append(url)
-
-    await ctx.send(f"🎵 已加入播放清單")
-
-    if not ctx.voice_client.is_playing():
-        await play_next(ctx)
+    if not vc.is_playing():
+        await play_next(ctx.guild.id, vc)
 
 # ======================
-# SKIP
+# RUN
 # ======================
-@bot.command()
-async def skip(ctx):
-    if ctx.voice_client and ctx.voice_client.is_playing():
-        ctx.voice_client.stop()
-        await ctx.send("⏭ 已跳過")
-
-# ======================
-# PAUSE
-# ======================
-@bot.command()
-async def pause(ctx):
-    if ctx.voice_client and ctx.voice_client.is_playing():
-        ctx.voice_client.pause()
-        await ctx.send("⏸ 已暫停")
-
-# ======================
-# RESUME
-# ======================
-@bot.command()
-async def resume(ctx):
-    if ctx.voice_client and ctx.voice_client.is_paused():
-        ctx.voice_client.resume()
-        await ctx.send("▶️ 繼續播放")
-
-# ======================
-# STOP
-# ======================
-@bot.command()
-async def stop(ctx):
-    if ctx.voice_client:
-        await ctx.voice_client.disconnect()
-        queues[ctx.guild.id].clear()
-        await ctx.send("⏹ 已停止並清空隊列")
-
-# ======================
-# OPTIONAL SPOTIFY (SAFE)
-# ======================
-spotify = None
-
-try:
-    import spotipy
-    from spotipy.oauth2 import SpotifyClientCredentials
-
-    cid = os.getenv("SPOTIPY_CLIENT_ID")
-    secret = os.getenv("SPOTIPY_CLIENT_SECRET")
-
-    if cid and secret:
-        spotify = spotipy.Spotify(
-            auth_manager=SpotifyClientCredentials(
-                client_id=cid,
-                client_secret=secret
-            )
-        )
-        print("Spotify enabled")
-    else:
-        print("Spotify not configured (ignored)")
-
-except Exception as e:
-    print("Spotify disabled:", e)
-
-# ======================
-# START BOT
-# ======================
-TOKEN = os.getenv("DISCORD_TOKEN")
-
-if not TOKEN:
-    raise RuntimeError("DISCORD_TOKEN not set in Railway Variables")
-
 bot.run(TOKEN)
