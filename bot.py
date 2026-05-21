@@ -5,6 +5,8 @@ import os
 import asyncio
 from collections import deque
 from datetime import datetime
+import spotipy
+from spotipy.oauth2 import SpotifyClientCredentials
 
 # =========================
 # BOT SETUP
@@ -19,6 +21,22 @@ bot = commands.Bot(command_prefix="!", intents=intents)
 # =========================
 # MUSIC CONFIG
 # =========================
+spotify = spotipy.Spotify(auth_manager=SpotifyClientCredentials(
+    client_id=os.getenv("SPOTIFY_CLIENT_ID"),
+    client_secret=os.getenv("SPOTIFY_CLIENT_SECRET")
+))
+def spotify_search(query: str):
+    try:
+        res = spotify.search(q=query, type="track", limit=1)
+        item = res["tracks"]["items"][0]
+
+        title = item["name"]
+        artist = item["artists"][0]["name"]
+
+        return f"{title} {artist}"
+
+    except:
+        return query  # fallback
 
 queues = {}
 
@@ -96,8 +114,11 @@ async def play_song(interaction: discord.Interaction, query: str):
     await interaction.followup.send("🔍 搜尋中...")
 
     try:
+        # Spotify 增強搜尋
+        search_query = spotify_search(query)
+
         with yt_dlp.YoutubeDL(YDL_OPTIONS) as ydl:
-            info = ydl.extract_info(query, download=False)
+            info = ydl.extract_info(search_query, download=False)
 
             if "entries" in info:
                 info = info["entries"][0]
