@@ -26,10 +26,13 @@ YDL_OPTIONS = {
     "format": "bestaudio/best",
     "noplaylist": True,
     "quiet": True,
+    "cookiefile": "cookies.txt",
+    "http_headers": {
+        "User-Agent": "Mozilla/5.0"
+    },
     "extractor_args": {
         "youtube": {
-            "player_client": ["android"],
-            "skip": ["dash", "hls"]
+            "player_client": ["android"]
         }
     }
 }
