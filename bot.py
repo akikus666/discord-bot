@@ -28,6 +28,7 @@ YDL_OPTIONS = {
     "quiet": True,
     "extractor_args": {
         "youtube": {
+            "player_client": ["android"],
             "skip": ["dash", "hls"]
         }
     }
