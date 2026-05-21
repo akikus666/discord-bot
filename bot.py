@@ -5,8 +5,6 @@ import random
 import os
 import wavelink
 
-print("HOST:", LAVALINK_HOST)
-print("PORT:", LAVALINK_PORT)
 
 # =========================
 # BOT
@@ -29,6 +27,8 @@ TOKEN = os.getenv("DISCORD_TOKEN")
 
 LAVALINK_HOST = os.getenv("LAVALINK_HOST", "localhost")
 LAVALINK_PASSWORD = os.getenv("LAVALINK_PASSWORD", "youshallnotpass")
+print("HOST:", LAVALINK_HOST)
+print("PORT:", LAVALINK_PORT)
 
 # 🚨 防 crash（重點修正）
 LAVALINK_PORT = int(os.getenv("LAVALINK_PORT", "80"))
