@@ -74,7 +74,7 @@ async def play_next(guild_id, vc):
     vc.play(source, after=after)
 
 
-async def play_song(interaction, query):
+async def play_song(interaction: discord.Interaction, query: str):
 
     if not interaction.user.voice:
         await interaction.followup.send("🎤 請先加入語音頻道", ephemeral=True)
@@ -180,7 +180,7 @@ class CoupleView(discord.ui.View):
             ephemeral=True
         )
 
-    @discord.ui.button(label="🔙 返回", style=discord.ButtonStyle.grey)
+    @discord.ui.button(label="🔙 返回", style=discord.ButtonStyle.secondary)
     async def back(self, interaction, button):
         await interaction.response.edit_message(
             content="📌 主選單",
@@ -210,7 +210,7 @@ class GiftView(discord.ui.View):
 
 
 # =========================
-# 💬 日常
+# 💬 日常互動
 # =========================
 
 class ChatView(discord.ui.View):
@@ -253,26 +253,33 @@ class MainView(discord.ui.View):
 
 
 # =========================
-# 🚀 START COMMAND
+# 🚀 START COMMAND（重點修復）
 # =========================
 
 @bot.tree.command(name="start", description="開啟主選單")
 async def start(interaction: discord.Interaction):
-    await interaction.response.send_message(
+
+    await interaction.response.defer(ephemeral=True)
+
+    await interaction.followup.send(
         "📌 主選單",
-        view=MainView(),
-        ephemeral=True
+        view=MainView()
     )
 
 
 # =========================
-# READY EVENT
+# READY
 # =========================
 
 @bot.event
 async def on_ready():
-    await bot.tree.sync()
-    print(f"✅ Logged in as {bot.user}")
+    try:
+        synced = await bot.tree.sync()
+        print(f"✅ synced {len(synced)} commands")
+    except Exception as e:
+        print("sync error:", e)
+
+    print(f"💖 logged in as {bot.user}")
 
 
 # =========================
