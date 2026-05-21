@@ -37,7 +37,7 @@ bot = commands.Bot(
 TOKEN = os.getenv("DISCORD_TOKEN")
 
 LAVALINK_HOST = "lavalink-production-cfa4.up.railway.app"
-LAVALINK_PASSWORD = LOVE113
+LAVALINK_PASSWORD = "love113"
 LAVALINK_PORT = 80
 
 print("HOST =", LAVALINK_HOST)
