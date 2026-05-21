@@ -18,6 +18,20 @@ intents.message_content = True
 intents.voice_states = True
 
 bot = commands.Bot(command_prefix="!", intents=intents)
+# =========================
+# 🎵 YT-DLP 設定（放這裡！）
+# =========================
+
+YDL_OPTIONS = {
+    "format": "bestaudio/best",
+    "noplaylist": True,
+    "quiet": True,
+    "extractor_args": {
+        "youtube": {
+            "skip": ["dash", "hls"]
+        }
+    }
+}
 
 # =========================
 # 💞 情侶系統
@@ -86,7 +100,7 @@ async def play_song(interaction: discord.Interaction, query: str):
 
     vc = interaction.guild.voice_client
     if not vc:
-        vc = await channel.connect()
+        vc = await channel.connect(timeout=60, reconnect=True)
 
     await interaction.followup.send("🔍 搜尋中...")
 
