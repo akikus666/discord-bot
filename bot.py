@@ -6,6 +6,8 @@ import yt_dlp
 import os
 import asyncio
 from collections import deque
+import nacl
+print("PyNaCl OK")
 
 # =========================
 # BOT SETUP
