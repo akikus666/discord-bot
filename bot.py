@@ -5,6 +5,18 @@ import random
 import os
 import wavelink
 
+import discord
+from discord.ext import commands
+from datetime import datetime
+import random
+import os
+import wavelink
+
+# 👇 就放這裡（最上面、所有東西前）
+
+print("RAW HOST =", repr(os.getenv("LAVALINK_HOST")))
+print("RAW PORT =", repr(os.getenv("LAVALINK_PORT")))
+
 # =========================
 # BOT
 # =========================
