@@ -1,4 +1,20 @@
-cookies.txt
-node_modules/
-.env
-*.log
+# Python
+__pycache__/
+*.pyc
+.venv/
+env/
+
+# Java / Lavalink
+Lavalink.jar
+bin/
+conf/
+include/
+jmods/
+legal/
+lib/
+release
+NOTICE
+
+# system
+.DS_Store
+Thumbs.db
