@@ -224,9 +224,9 @@ async def on_ready():
     print(bot.user)
 
     node = wavelink.Node(
-        uri=f"http://{LAVALINK_HOST}:{LAVALINK_PORT}",
-        password=LAVALINK_PASSWORD
-    )
+    uri="http://lavalink-production-cfa4.up.railway.app:2333",
+    password="love113"
+)
 
     await wavelink.Pool.connect(
         client=bot,
