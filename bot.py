@@ -3,12 +3,22 @@ from discord.ext import commands
 import yt_dlp
 import asyncio
 import os
+from collections import defaultdict
 
-print("TOKEN CHECK:", os.getenv("DISCORD_TOKEN"))
+# ======================
+# ENV CHECK
+# ======================
+TOKEN = os.getenv("DISCORD_TOKEN")
+
+if not TOKEN:
+    raise RuntimeError("DISCORD_TOKEN not set in Railway Variables")
+
+print("BOT STARTING...")
+print("TOKEN OK:", bool(TOKEN))
 print("TEST:", os.getenv("TEST123"))
 
 # ======================
-# intents
+# INTENTS
 # ======================
 intents = discord.Intents.default()
 intents.message_content = True
@@ -17,21 +27,17 @@ intents.voice_states = True
 bot = commands.Bot(command_prefix="!", intents=intents)
 
 # ======================
-# queue
+# QUEUE
 # ======================
-queues = {}
-
-def get_queue(guild_id):
-    if guild_id not in queues:
-        queues[guild_id] = []
-    return queues[guild_id]
+queues = defaultdict(list)
 
 # ======================
-# yt-dlp settings
+# YT-DLP SETTINGS
 # ======================
 ydl_opts = {
-    "format": "bestaudio",
+    "format": "bestaudio/best",
     "quiet": True,
+    "noplaylist": True,
 }
 
 ffmpeg_opts = {
@@ -39,21 +45,29 @@ ffmpeg_opts = {
 }
 
 # ======================
-# play next
+# PLAY NEXT
 # ======================
 async def play_next(ctx):
-    queue = get_queue(ctx.guild.id)
+    if not ctx.voice_client:
+        return
 
-    if len(queue) == 0:
+    queue = queues[ctx.guild.id]
+
+    if not queue:
         return
 
     url = queue.pop(0)
 
-    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-        info = ydl.extract_info(url, download=False)
-        audio_url = info["url"]
+    try:
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            info = ydl.extract_info(url, download=False)
+            audio_url = info["url"]
 
-    source = await discord.FFmpegOpusAudio.from_probe(audio_url, **ffmpeg_opts)
+        source = await discord.FFmpegOpusAudio.from_probe(audio_url, **ffmpeg_opts)
+
+    except Exception as e:
+        print("ERROR extracting audio:", e)
+        return await play_next(ctx)
 
     def after_play(err):
         fut = asyncio.run_coroutine_threadsafe(play_next(ctx), bot.loop)
@@ -65,10 +79,10 @@ async def play_next(ctx):
     ctx.voice_client.play(source, after=after_play)
 
 # ======================
-# join voice
+# JOIN VC
 # ======================
 async def join_vc(ctx):
-    if ctx.author.voice is None:
+    if not ctx.author.voice:
         await ctx.send("❌ 你沒有在語音頻道")
         return False
 
@@ -82,7 +96,7 @@ async def join_vc(ctx):
     return True
 
 # ======================
-# play command
+# PLAY
 # ======================
 @bot.command()
 async def play(ctx, url: str):
@@ -90,16 +104,15 @@ async def play(ctx, url: str):
     if not ok:
         return
 
-    queue = get_queue(ctx.guild.id)
-    queue.append(url)
+    queues[ctx.guild.id].append(url)
 
-    await ctx.send(f"🎵 已加入播放清單：{url}")
+    await ctx.send(f"🎵 已加入播放清單")
 
     if not ctx.voice_client.is_playing():
         await play_next(ctx)
 
 # ======================
-# skip
+# SKIP
 # ======================
 @bot.command()
 async def skip(ctx):
@@ -108,7 +121,7 @@ async def skip(ctx):
         await ctx.send("⏭ 已跳過")
 
 # ======================
-# pause
+# PAUSE
 # ======================
 @bot.command()
 async def pause(ctx):
@@ -117,7 +130,7 @@ async def pause(ctx):
         await ctx.send("⏸ 已暫停")
 
 # ======================
-# resume
+# RESUME
 # ======================
 @bot.command()
 async def resume(ctx):
@@ -126,32 +139,32 @@ async def resume(ctx):
         await ctx.send("▶️ 繼續播放")
 
 # ======================
-# stop
+# STOP
 # ======================
 @bot.command()
 async def stop(ctx):
     if ctx.voice_client:
         await ctx.voice_client.disconnect()
-        queues[ctx.guild.id] = []
+        queues[ctx.guild.id].clear()
         await ctx.send("⏹ 已停止並清空隊列")
 
 # ======================
-# Spotify (safe optional)
+# OPTIONAL SPOTIFY (SAFE)
 # ======================
+spotify = None
+
 try:
     import spotipy
     from spotipy.oauth2 import SpotifyClientCredentials
 
-    client_id = os.getenv("SPOTIPY_CLIENT_ID")
-    client_secret = os.getenv("SPOTIPY_CLIENT_SECRET")
+    cid = os.getenv("SPOTIPY_CLIENT_ID")
+    secret = os.getenv("SPOTIPY_CLIENT_SECRET")
 
-    spotify = None
-
-    if client_id and client_secret:
+    if cid and secret:
         spotify = spotipy.Spotify(
             auth_manager=SpotifyClientCredentials(
-                client_id=client_id,
-                client_secret=client_secret
+                client_id=cid,
+                client_secret=secret
             )
         )
         print("Spotify enabled")
@@ -162,8 +175,11 @@ except Exception as e:
     print("Spotify disabled:", e)
 
 # ======================
-# run bot
+# START BOT
 # ======================
 TOKEN = os.getenv("DISCORD_TOKEN")
+
+if not TOKEN:
+    raise RuntimeError("DISCORD_TOKEN not set in Railway Variables")
 
 bot.run(TOKEN)
