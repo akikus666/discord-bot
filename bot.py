@@ -28,10 +28,10 @@ def get_days():
 
 
 # =========================
-# 🎵 音樂系統 Queue
+# 🎵 音樂系統
 # =========================
 
-music_queue = {}
+queues = {}
 
 YDL_OPTIONS = {
     "format": "bestaudio/best",
@@ -45,20 +45,34 @@ FFMPEG_OPTIONS = {
 }
 
 
+def get_queue(guild_id):
+    if guild_id not in queues:
+        queues[guild_id] = deque()
+    return queues[guild_id]
+
+
 async def play_next(guild_id, vc):
-    if guild_id not in music_queue or len(music_queue[guild_id]) == 0:
+    queue = get_queue(guild_id)
+
+    if len(queue) == 0:
         return
 
-    song = music_queue[guild_id].popleft()
+    song = queue.popleft()
 
     source = discord.FFmpegPCMAudio(song["url"], **FFMPEG_OPTIONS)
-    vc.play(source, after=lambda e: asyncio.run_coroutine_threadsafe(
-        play_next(guild_id, vc), bot.loop
-    ))
 
-# =========================
-# 播放歌曲
-# =========================
+    def after(error):
+        fut = asyncio.run_coroutine_threadsafe(
+            play_next(guild_id, vc),
+            bot.loop
+        )
+        try:
+            fut.result()
+        except:
+            pass
+
+    vc.play(source, after=after)
+
 
 async def play_song(interaction, query):
 
@@ -72,6 +86,8 @@ async def play_song(interaction, query):
     if not vc:
         vc = await channel.connect()
 
+    await interaction.followup.send("🔍 搜尋中...")
+
     with yt_dlp.YoutubeDL(YDL_OPTIONS) as ydl:
         info = ydl.extract_info(f"ytsearch:{query}", download=False)
         data = info["entries"][0]
@@ -81,22 +97,27 @@ async def play_song(interaction, query):
         "url": data["url"]
     }
 
-    guild_id = interaction.guild.id
+    queue = get_queue(interaction.guild.id)
+    queue.append(song)
 
-    if guild_id not in music_queue:
-        music_queue[guild_id] = deque()
-
-    music_queue[guild_id].append(song)
-
-    await interaction.followup.send(f"🎵 已加入播放清單：{song['title']}")
+    await interaction.channel.send(f"🎵 已加入：{song['title']}")
 
     if not vc.is_playing():
-        await play_next(guild_id, vc)
+        await play_next(interaction.guild.id, vc)
 
 
 # =========================
-# 🎵 Music UI
+# 🎵 MUSIC UI
 # =========================
+
+class MusicModal(discord.ui.Modal, title="搜尋音樂"):
+
+    song = discord.ui.TextInput(label="輸入歌曲")
+
+    async def on_submit(self, interaction: discord.Interaction):
+        await interaction.response.defer()
+        await play_song(interaction, self.song.value)
+
 
 class MusicView(discord.ui.View):
 
@@ -133,15 +154,6 @@ class MusicView(discord.ui.View):
         await interaction.response.send_message("👋 已離開語音", ephemeral=True)
 
 
-class MusicModal(discord.ui.Modal, title="搜尋音樂"):
-
-    song = discord.ui.TextInput(label="輸入歌曲")
-
-    async def on_submit(self, interaction):
-        await interaction.response.defer()
-        await play_song(interaction, self.song.value)
-
-
 # =========================
 # 💞 情侶 UI
 # =========================
@@ -150,13 +162,11 @@ class CoupleView(discord.ui.View):
 
     @discord.ui.button(label="💞 days", style=discord.ButtonStyle.primary)
     async def days(self, interaction, button):
-        await interaction.response.send_message(
-            f"💞 已經在一起 {get_days()} 天了"
-        )
+        await interaction.response.send_message(f"💞 在一起 {get_days()} 天")
 
     @discord.ui.button(label="💗 love", style=discord.ButtonStyle.primary)
     async def love(self, interaction, button):
-        await interaction.response.send_message("💗 今天也很想你")
+        await interaction.response.send_message("💗 今天也想你")
 
     @discord.ui.button(label="🤗 hug", style=discord.ButtonStyle.primary)
     async def hug(self, interaction, button):
@@ -188,11 +198,11 @@ class GiftView(discord.ui.View):
     async def gift(self, interaction, button):
 
         gifts = [
-            "🧋 奶茶一杯",
-            "💖 偷偷抱抱",
-            "🌙 你是最重要的人",
+            "🧋 奶茶",
+            "💖 抱抱",
+            "🌙 你很重要",
             "🍫 巧克力",
-            "💌 情書一封",
+            "💌 情書",
             "✨ 幸運+100%"
         ]
 
@@ -200,18 +210,18 @@ class GiftView(discord.ui.View):
 
 
 # =========================
-# 💬 日常互動
+# 💬 日常
 # =========================
 
 class ChatView(discord.ui.View):
 
     @discord.ui.button(label="☀️ 早安", style=discord.ButtonStyle.secondary)
     async def morning(self, interaction, button):
-        await interaction.response.send_message("☀️ 早安～")
+        await interaction.response.send_message("☀️ 早安")
 
     @discord.ui.button(label="🌙 晚安", style=discord.ButtonStyle.secondary)
     async def night(self, interaction, button):
-        await interaction.response.send_message("🌙 晚安～")
+        await interaction.response.send_message("🌙 晚安")
 
 
 # =========================
@@ -243,7 +253,7 @@ class MainView(discord.ui.View):
 
 
 # =========================
-# 🚀 slash command
+# 🚀 START COMMAND
 # =========================
 
 @bot.tree.command(name="start", description="開啟主選單")
@@ -256,7 +266,7 @@ async def start(interaction: discord.Interaction):
 
 
 # =========================
-# READY
+# READY EVENT
 # =========================
 
 @bot.event
