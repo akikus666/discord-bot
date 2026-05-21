@@ -1,44 +1,29 @@
 import discord
 from discord.ext import commands
-from datetime import datetime
-import random
 import os
-import wavelink
-
-import discord
-from discord.ext import commands
-from datetime import datetime
 import random
-import os
 import wavelink
-
-# 👇 就放這裡（最上面、所有東西前）
-
-print("RAW HOST =", repr(os.getenv("LAVALINK_HOST")))
-print("RAW PORT =", repr(os.getenv("LAVALINK_PORT")))
+from datetime import datetime
 
 # =========================
-# BOT
+# BOT SETUP
 # =========================
 
 intents = discord.Intents.default()
 intents.message_content = True
 intents.voice_states = True
 
-bot = commands.Bot(
-    command_prefix="!",
-    intents=intents
-)
+bot = commands.Bot(command_prefix="!", intents=intents)
 
 # =========================
-# ENV（安全版）
+# ENV (直接寫死 or Railway env 都可)
 # =========================
 
 TOKEN = os.getenv("DISCORD_TOKEN")
 
-LAVALINK_HOST = "lavalink-production-cfa4.up.railway.app"
-LAVALINK_PASSWORD = "love113"
-LAVALINK_PORT = 2333
+LAVALINK_HOST = os.getenv("LAVALINK_HOST", "lavalink-production-cfa4.up.railway.app")
+LAVALINK_PORT = int(os.getenv("LAVALINK_PORT", "2333"))
+LAVALINK_PASSWORD = os.getenv("LAVALINK_PASSWORD", "love113")
 
 print("HOST =", LAVALINK_HOST)
 print("PORT =", LAVALINK_PORT)
@@ -53,10 +38,10 @@ def get_days():
     return (datetime.now() - start_date).days
 
 # =========================
-# 音樂系統
+# Lavalink Player
 # =========================
 
-async def get_player(interaction):
+async def get_player(interaction: discord.Interaction):
 
     if not interaction.user.voice:
         return None
@@ -70,15 +55,12 @@ async def get_player(interaction):
     return player
 
 
-async def play_song(interaction, query):
+async def play_song(interaction, query: str):
 
     player = await get_player(interaction)
 
     if not player:
-        return await interaction.followup.send(
-            "❌ 先加入語音頻道",
-            ephemeral=True
-        )
+        return await interaction.followup.send("❌ 請先加入語音", ephemeral=True)
 
     await interaction.followup.send("🔍 搜尋中...")
 
@@ -117,28 +99,28 @@ class MusicView(discord.ui.View):
         vc = interaction.guild.voice_client
         if vc:
             await vc.pause()
-        await interaction.response.send_message("⏸ 已暫停", ephemeral=True)
+        await interaction.response.send_message("⏸ 暫停", ephemeral=True)
 
     @discord.ui.button(label="▶ 繼續", style=discord.ButtonStyle.success)
     async def resume(self, interaction, button):
         vc = interaction.guild.voice_client
         if vc:
             await vc.resume()
-        await interaction.response.send_message("▶ 已繼續", ephemeral=True)
+        await interaction.response.send_message("▶ 繼續", ephemeral=True)
 
-    @discord.ui.button(label="⏭ 停止/跳過", style=discord.ButtonStyle.primary)
+    @discord.ui.button(label="⏭ 跳過", style=discord.ButtonStyle.primary)
     async def skip(self, interaction, button):
         vc = interaction.guild.voice_client
         if vc and vc.current:
             await vc.stop()
-        await interaction.response.send_message("⏭ 已停止", ephemeral=True)
+        await interaction.response.send_message("⏭ 跳過", ephemeral=True)
 
     @discord.ui.button(label="👋 離開", style=discord.ButtonStyle.danger)
     async def leave(self, interaction, button):
         vc = interaction.guild.voice_client
         if vc:
             await vc.disconnect()
-        await interaction.response.send_message("👋 已離開語音", ephemeral=True)
+        await interaction.response.send_message("👋 離開", ephemeral=True)
 
 # =========================
 # 情侶 UI
@@ -221,11 +203,11 @@ class MainView(discord.ui.View):
         )
 
 # =========================
-# Slash command
+# SLASH COMMAND
 # =========================
 
 @bot.tree.command(name="start", description="主選單")
-async def start(interaction):
+async def start(interaction: discord.Interaction):
     await interaction.response.send_message(
         "📌 主選單",
         view=MainView(),
@@ -233,14 +215,13 @@ async def start(interaction):
     )
 
 # =========================
-# READY + Lavalink
+# LAVALINK CONNECT
 # =========================
 
 @bot.event
 async def on_ready():
 
     print(bot.user)
-    print("HOST =", LAVALINK_HOST)
 
     node = wavelink.Node(
         uri=f"http://{LAVALINK_HOST}:{LAVALINK_PORT}",
@@ -256,5 +237,8 @@ async def on_ready():
 
     print("✅ Lavalink connected")
 
+# =========================
+# RUN BOT
+# =========================
 
 bot.run(TOKEN)
