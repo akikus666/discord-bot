@@ -3,74 +3,93 @@ from discord.ext import commands
 import yt_dlp
 import asyncio
 import os
-import random
 from datetime import datetime
-from collections import deque
+from collections import defaultdict, deque
 
-# ======================
-# ENV
-# ======================
+# =========================
+# TOKEN
+# =========================
 TOKEN = os.getenv("DISCORD_TOKEN")
 
 if not TOKEN:
-    raise RuntimeError("DISCORD_TOKEN not set")
+    raise RuntimeError("❌ DISCORD_TOKEN 沒有設定")
 
 print("BOT STARTING...")
 print("TOKEN OK:", bool(TOKEN))
 
-# ======================
+# =========================
 # INTENTS
-# ======================
+# =========================
 intents = discord.Intents.default()
 intents.message_content = True
 intents.voice_states = True
+intents.guilds = True
 
-bot = commands.Bot(command_prefix="!", intents=intents)
+bot = commands.Bot(command_prefix="!", intents=intents, reconnect=True)
 
-# ======================
-# 💞 情侶天數
-# ======================
+# =========================
+# 💞 情侶系統
+# =========================
 start_date = datetime(2025, 2, 24)
 
 def get_days():
     return (datetime.now() - start_date).days
 
-# ======================
+# =========================
 # 🎵 QUEUE
-# ======================
-queues = {}
+# =========================
+queues = defaultdict(deque)
 
-def get_queue(guild_id):
-    if guild_id not in queues:
-        queues[guild_id] = deque()
-    return queues[guild_id]
-
-# ======================
+# =========================
 # YT-DLP
-# ======================
-YDL_OPTIONS = {
+# =========================
+ydl_opts = {
     "format": "bestaudio/best",
     "quiet": True,
     "noplaylist": True,
 }
 
-FFMPEG_OPTIONS = {
+ffmpeg_opts = {
     "before_options": "-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5",
     "options": "-vn"
 }
 
-# ======================
-# MUSIC ENGINE
-# ======================
+# =========================
+# SAFE VOICE CONNECT
+# =========================
+async def safe_connect(channel):
+    vc = channel.guild.voice_client
+
+    if vc and vc.is_connected():
+        return vc
+
+    try:
+        return await channel.connect(timeout=60, reconnect=True)
+    except Exception as e:
+        print("VOICE CONNECT ERROR:", e)
+        return None
+
+# =========================
+# PLAY NEXT
+# =========================
 async def play_next(guild_id, vc):
-    queue = get_queue(guild_id)
+    queue = queues[guild_id]
 
     if not queue:
         return
 
     song = queue.popleft()
 
-    source = discord.FFmpegPCMAudio(song["url"], **FFMPEG_OPTIONS)
+    try:
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            info = ydl.extract_info(song["url"], download=False)
+            audio_url = info["url"]
+
+        source = await discord.FFmpegOpusAudio.from_probe(audio_url, **ffmpeg_opts)
+
+    except Exception as e:
+        print("YT ERROR:", e)
+        return await play_next(guild_id, vc)
 
     def after(err):
         fut = asyncio.run_coroutine_threadsafe(
@@ -84,93 +103,51 @@ async def play_next(guild_id, vc):
 
     vc.play(source, after=after)
 
-# ======================
-# CONNECT VC
-# ======================
-async def safe_connect(channel):
-    vc = channel.guild.voice_client
-
-    if vc and vc.is_connected():
-        return vc
-
-    return await channel.connect()
-
-# ======================
+# =========================
 # MUSIC FUNCTION
-# ======================
-async def play_song(interaction, query):
-    if not interaction.user.voice:
-        return await interaction.response.send_message("❌ 先進語音", ephemeral=True)
+# =========================
+async def play_music(ctx, url: str):
+    if not ctx.author.voice:
+        return await ctx.send("❌ 你沒有在語音頻道")
 
-    vc = await safe_connect(interaction.user.voice.channel)
+    vc = await safe_connect(ctx.author.voice.channel)
+    if not vc:
+        return await ctx.send("❌ 無法加入語音（4006）")
 
-    await interaction.response.send_message("🔍 搜尋中...")
+    queue = queues[ctx.guild.id]
+    queue.append({"url": url})
 
-    with yt_dlp.YoutubeDL(YDL_OPTIONS) as ydl:
-        info = ydl.extract_info(f"ytsearch:{query}", download=False)
-        data = info["entries"][0]
-
-    song = {
-        "title": data["title"],
-        "url": data["url"]
-    }
-
-    get_queue(interaction.guild.id).append(song)
-
-    await interaction.followup.send(f"🎵 已加入：{song['title']}")
+    await ctx.send(f"🎵 已加入播放")
 
     if not vc.is_playing():
-        await play_next(interaction.guild.id, vc)
+        await play_next(ctx.guild.id, vc)
 
-# ======================
-# 🎵 MUSIC UI
-# ======================
-class MusicView(discord.ui.View):
+# =========================
+# 🎮 TEXT COMMANDS
+# =========================
+@bot.command()
+async def play(ctx, url: str):
+    await play_music(ctx, url)
 
-    @discord.ui.button(label="🔍 搜尋", style=discord.ButtonStyle.primary)
-    async def search(self, interaction, button):
-        await interaction.response.send_modal(MusicModal())
+@bot.command()
+async def skip(ctx):
+    if ctx.voice_client:
+        ctx.voice_client.stop()
+        await ctx.send("⏭ skip")
 
-    @discord.ui.button(label="⏸ 暫停", style=discord.ButtonStyle.secondary)
-    async def pause(self, interaction, button):
-        vc = interaction.guild.voice_client
-        if vc:
-            vc.pause()
-        await interaction.response.send_message("⏸ 暫停", ephemeral=True)
+@bot.command()
+async def stop(ctx):
+    if ctx.voice_client:
+        await ctx.voice_client.disconnect()
+    queues[ctx.guild.id].clear()
+    await ctx.send("⏹ stop")
 
-    @discord.ui.button(label="▶ 繼續", style=discord.ButtonStyle.success)
-    async def resume(self, interaction, button):
-        vc = interaction.guild.voice_client
-        if vc:
-            vc.resume()
-        await interaction.response.send_message("▶ 繼續", ephemeral=True)
-
-    @discord.ui.button(label="⏭ 跳過", style=discord.ButtonStyle.primary)
-    async def skip(self, interaction, button):
-        vc = interaction.guild.voice_client
-        if vc:
-            vc.stop()
-        await interaction.response.send_message("⏭ 跳過", ephemeral=True)
-
-    @discord.ui.button(label="👋 離開", style=discord.ButtonStyle.danger)
-    async def leave(self, interaction, button):
-        vc = interaction.guild.voice_client
-        if vc:
-            await vc.disconnect()
-        await interaction.response.send_message("👋 離開")
-
-class MusicModal(discord.ui.Modal, title="搜尋音樂"):
-    song = discord.ui.TextInput(label="歌曲")
-
-    async def on_submit(self, interaction):
-        await play_song(interaction, self.song.value)
-
-# ======================
-# 💞 情侶 UI（修正版）
-# ======================
+# =========================
+# 💞 UI VIEWS
+# =========================
 class CoupleView(discord.ui.View):
 
-    @discord.ui.button(label="💞 天數", style=discord.ButtonStyle.primary)
+    @discord.ui.button(label="💞 days", style=discord.ButtonStyle.primary)
     async def days(self, interaction, button):
         await interaction.response.send_message(f"💞 在一起 {get_days()} 天")
 
@@ -182,23 +159,18 @@ class CoupleView(discord.ui.View):
     async def hug(self, interaction, button):
         await interaction.response.send_message("🤗 抱抱")
 
-    @discord.ui.button(label="🎵 音樂", style=discord.ButtonStyle.success)
+    @discord.ui.button(label="🎵 music", style=discord.ButtonStyle.success)
     async def music(self, interaction, button):
-        await interaction.response.send_message("🎵 音樂面板", view=MusicView(), ephemeral=True)
+        await interaction.response.send_message("🎵 請用 !play 或貼連結")
 
-# ======================
-# 🎁 驚喜
-# ======================
 class GiftView(discord.ui.View):
 
-    @discord.ui.button(label="🎁 開啟", style=discord.ButtonStyle.success)
+    @discord.ui.button(label="🎁 open", style=discord.ButtonStyle.success)
     async def gift(self, interaction, button):
+        import random
         gifts = ["🧋 奶茶", "💖 抱抱", "🍫 巧克力", "✨ 幸運+100%"]
         await interaction.response.send_message(random.choice(gifts))
 
-# ======================
-# 💬 日常
-# ======================
 class ChatView(discord.ui.View):
 
     @discord.ui.button(label="☀️ 早安", style=discord.ButtonStyle.secondary)
@@ -209,9 +181,6 @@ class ChatView(discord.ui.View):
     async def night(self, interaction, button):
         await interaction.response.send_message("🌙 晚安")
 
-# ======================
-# 📌 主選單
-# ======================
 class MainView(discord.ui.View):
 
     @discord.ui.button(label="💞 情侶", style=discord.ButtonStyle.primary)
@@ -226,9 +195,9 @@ class MainView(discord.ui.View):
     async def chat(self, interaction, button):
         await interaction.response.edit_message(content="💬 日常", view=ChatView())
 
-# ======================
+# =========================
 # /start
-# ======================
+# =========================
 @bot.tree.command(name="start", description="主選單")
 async def start(interaction: discord.Interaction):
     await interaction.response.send_message(
@@ -237,29 +206,20 @@ async def start(interaction: discord.Interaction):
         ephemeral=True
     )
 
-# ======================
-# PREFIX PLAY
-# ======================
-@bot.command()
-async def play(ctx, query: str):
-    if not ctx.author.voice:
-        return await ctx.send("❌ 先進語音")
+# =========================
+# SYNC COMMANDS
+# =========================
+@bot.event
+async def on_ready():
+    try:
+        synced = await bot.tree.sync()
+        print(f"💖 Synced {len(synced)} commands")
+    except Exception as e:
+        print("SYNC ERROR:", e)
 
-    vc = await safe_connect(ctx.author.voice.channel)
+    print(f"💖 Logged in as {bot.user}")
 
-    with yt_dlp.YoutubeDL(YDL_OPTIONS) as ydl:
-        info = ydl.extract_info(f"ytsearch:{query}", download=False)
-        data = info["entries"][0]
-
-    song = {"title": data["title"], "url": data["url"]}
-    get_queue(ctx.guild.id).append(song)
-
-    await ctx.send(f"🎵 加入：{song['title']}")
-
-    if not vc.is_playing():
-        await play_next(ctx.guild.id, vc)
-
-# ======================
+# =========================
 # RUN
-# ======================
+# =========================
 bot.run(TOKEN)
