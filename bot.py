@@ -5,6 +5,7 @@ import asyncio
 import os
 
 print("TOKEN CHECK:", os.getenv("DISCORD_TOKEN"))
+print("TEST:", os.getenv("TEST123"))
 
 # ======================
 # intents
