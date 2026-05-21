@@ -38,7 +38,7 @@ TOKEN = os.getenv("DISCORD_TOKEN")
 
 LAVALINK_HOST = "lavalink-production-cfa4.up.railway.app"
 LAVALINK_PASSWORD = "love113"
-LAVALINK_PORT = 80
+LAVALINK_PORT = 2333
 
 print("HOST =", LAVALINK_HOST)
 print("PORT =", LAVALINK_PORT)
