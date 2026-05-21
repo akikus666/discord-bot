@@ -4,6 +4,8 @@ import yt_dlp
 import asyncio
 import os
 
+print("TOKEN CHECK:", os.getenv("DISCORD_TOKEN"))
+
 # ======================
 # intents
 # ======================
