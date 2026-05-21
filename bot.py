@@ -5,7 +5,6 @@ import random
 import os
 import wavelink
 
-
 # =========================
 # BOT
 # =========================
@@ -20,21 +19,20 @@ bot = commands.Bot(
 )
 
 # =========================
-# ENV（已修）
+# ENV（安全版）
 # =========================
 
 TOKEN = os.getenv("DISCORD_TOKEN")
 
 LAVALINK_HOST = os.getenv("LAVALINK_HOST", "localhost")
-LAVALINK_PASSWORD = os.getenv("LAVALINK_PASSWORD", "youshallnotpass")
-print("HOST:", LAVALINK_HOST)
-print("PORT:", LAVALINK_PORT)
-
-# 🚨 防 crash（重點修正）
+LAVALINK_PASSWORD = os.getenv("LAVALINK_PASSWORD", "")
 LAVALINK_PORT = int(os.getenv("LAVALINK_PORT", "80"))
 
+print("HOST =", LAVALINK_HOST)
+print("PORT =", LAVALINK_PORT)
+
 # =========================
-# 情侶
+# 情侶系統
 # =========================
 
 start_date = datetime(2025, 2, 24)
@@ -66,7 +64,7 @@ async def play_song(interaction, query):
 
     if not player:
         return await interaction.followup.send(
-            "❌ 先進語音",
+            "❌ 先加入語音頻道",
             ephemeral=True
         )
 
@@ -75,7 +73,7 @@ async def play_song(interaction, query):
     tracks = await wavelink.Playable.search(query)
 
     if not tracks:
-        return await interaction.channel.send("❌ 找不到")
+        return await interaction.channel.send("❌ 找不到歌曲")
 
     track = tracks[0]
 
@@ -84,7 +82,7 @@ async def play_song(interaction, query):
     await interaction.channel.send(f"🎵 播放中：{track.title}")
 
 # =========================
-# MUSIC MODAL
+# MUSIC UI
 # =========================
 
 class MusicModal(discord.ui.Modal, title="搜尋音樂"):
@@ -114,21 +112,21 @@ class MusicView(discord.ui.View):
         vc = interaction.guild.voice_client
         if vc:
             await vc.resume()
-        await interaction.response.send_message("▶ 繼續", ephemeral=True)
+        await interaction.response.send_message("▶ 已繼續", ephemeral=True)
 
-    @discord.ui.button(label="⏭ 跳過", style=discord.ButtonStyle.primary)
+    @discord.ui.button(label="⏭ 停止/跳過", style=discord.ButtonStyle.primary)
     async def skip(self, interaction, button):
         vc = interaction.guild.voice_client
         if vc and vc.current:
             await vc.stop()
-        await interaction.response.send_message("⏭ 跳過", ephemeral=True)
+        await interaction.response.send_message("⏭ 已停止", ephemeral=True)
 
     @discord.ui.button(label="👋 離開", style=discord.ButtonStyle.danger)
     async def leave(self, interaction, button):
         vc = interaction.guild.voice_client
         if vc:
             await vc.disconnect()
-        await interaction.response.send_message("👋 已離開", ephemeral=True)
+        await interaction.response.send_message("👋 已離開語音", ephemeral=True)
 
 # =========================
 # 情侶 UI
@@ -211,7 +209,7 @@ class MainView(discord.ui.View):
         )
 
 # =========================
-# START COMMAND
+# Slash command
 # =========================
 
 @bot.tree.command(name="start", description="主選單")
@@ -223,16 +221,17 @@ async def start(interaction):
     )
 
 # =========================
-# READY + LAVALINK
+# READY + Lavalink
 # =========================
 
 @bot.event
 async def on_ready():
 
     print(bot.user)
+    print("HOST =", LAVALINK_HOST)
 
     node = wavelink.Node(
-        uri=f"https://{LAVALINK_HOST}",
+        uri=f"http://{LAVALINK_HOST}:{LAVALINK_PORT}",
         password=LAVALINK_PASSWORD
     )
 
@@ -243,7 +242,7 @@ async def on_ready():
 
     await bot.tree.sync()
 
-    print("Lavalink connected")
+    print("✅ Lavalink connected")
 
 
 bot.run(TOKEN)
