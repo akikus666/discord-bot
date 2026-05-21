@@ -5,6 +5,9 @@ import random
 import os
 import wavelink
 
+print("HOST:", LAVALINK_HOST)
+print("PORT:", LAVALINK_PORT)
+
 # =========================
 # BOT
 # =========================
