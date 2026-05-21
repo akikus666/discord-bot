@@ -21,6 +21,13 @@ bot = commands.Bot(command_prefix="!", intents=intents)
 # =========================
 # 🎵 YT-DLP 設定（放這裡！）
 # =========================
+COOKIE_FILE = "cookies.txt"
+
+cookies_text = os.getenv("COOKIES")
+
+if cookies_text:
+    with open(COOKIE_FILE, "w", encoding="utf-8") as f:
+        f.write(cookies_text)
 
 YDL_OPTIONS = {
     "format": "bestaudio/best",
