@@ -2,6 +2,7 @@ import discord
 from discord.ext import commands
 from datetime import datetime
 import random
+import yt_dlp
 import os
 
 # =========================
@@ -19,6 +20,169 @@ start_date = datetime(2025, 2, 24)
 
 def get_days():
     return (datetime.now() - start_date).days
+# =========================
+# 🎵 音樂系統
+# =========================
+
+YDL_OPTIONS = {
+    "format": "bestaudio/best",
+    "noplaylist": True,
+    "quiet": True
+}
+
+FFMPEG_OPTIONS = {
+    "before_options":
+    "-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5",
+    "options": "-vn"
+}
+
+
+async def play_song(interaction, song_name):
+
+    if not interaction.user.voice:
+        await interaction.followup.send(
+            "🎤 請先加入語音頻道",
+            ephemeral=True
+        )
+        return
+
+    channel = interaction.user.voice.channel
+
+    if not interaction.guild.voice_client:
+        vc = await channel.connect()
+    else:
+        vc = interaction.guild.voice_client
+
+    with yt_dlp.YoutubeDL(
+        YDL_OPTIONS
+    ) as ydl:
+
+        info = ydl.extract_info(
+            f"ytsearch:{song_name}",
+            download=False
+        )
+
+        data = info["entries"][0]
+
+        url = data["url"]
+        title = data["title"]
+
+    source = discord.FFmpegPCMAudio(
+        url,
+        **FFMPEG_OPTIONS
+    )
+
+    if vc.is_playing():
+        vc.stop()
+
+    vc.play(source)
+
+    await interaction.followup.send(
+        f"🎵 正在播放：{title}"
+    )
+
+
+class SongModal(
+    discord.ui.Modal,
+    title="搜尋歌曲"
+):
+
+    song = discord.ui.TextInput(
+        label="輸入歌曲名稱",
+        placeholder="例如：稻香"
+    )
+
+    async def on_submit(
+        self,
+        interaction: discord.Interaction
+    ):
+
+        await interaction.response.defer()
+
+        await play_song(
+            interaction,
+            self.song.value
+        )
+
+
+class MusicView(discord.ui.View):
+
+    @discord.ui.button(
+        label="🔍 搜尋歌曲",
+        style=discord.ButtonStyle.primary
+    )
+    async def search(
+        self,
+        interaction,
+        button
+    ):
+
+        await interaction.response.send_modal(
+            SongModal()
+        )
+
+
+    @discord.ui.button(
+        label="⏸ 暫停",
+        style=discord.ButtonStyle.secondary
+    )
+    async def pause(
+        self,
+        interaction,
+        button
+    ):
+
+        vc=interaction.guild.voice_client
+
+        if vc and vc.is_playing():
+            vc.pause()
+
+        await interaction.response.send_message(
+            "⏸ 已暫停",
+            ephemeral=True
+        )
+
+
+    @discord.ui.button(
+        label="▶ 繼續",
+        style=discord.ButtonStyle.success
+    )
+    async def resume(
+        self,
+        interaction,
+        button
+    ):
+
+        vc=interaction.guild.voice_client
+
+        if vc and vc.is_paused():
+            vc.resume()
+
+        await interaction.response.send_message(
+            "▶ 已繼續",
+            ephemeral=True
+        )
+
+
+    @discord.ui.button(
+        label="👋 離開",
+        style=discord.ButtonStyle.danger
+    )
+    async def leave(
+        self,
+        interaction,
+        button
+    ):
+
+        vc=interaction.guild.voice_client
+
+        if vc:
+            await vc.disconnect()
+
+        await interaction.response.send_message(
+            "👋 已離開語音頻道",
+            ephemeral=True
+        )
 
 # =========================
 # 📌 主選單
@@ -90,6 +254,18 @@ class CoupleView(discord.ui.View):
         )
 
         await interaction.channel.send("🤗 抱抱 💖")
+   @discord.ui.button(label="🎵 音樂", style=discord.ButtonStyle.success)
+   async def music(
+    self,
+    interaction: discord.Interaction,
+    button: discord.ui.Button
+   ):
+
+    await interaction.response.send_message(
+        "🎵 情侶 KTV",
+        view=MusicView(),
+        ephemeral=True
+    )
 
     @discord.ui.button(label="🔙 返回", style=discord.ButtonStyle.grey)
     async def back(self, interaction: discord.Interaction, button: discord.ui.Button):
